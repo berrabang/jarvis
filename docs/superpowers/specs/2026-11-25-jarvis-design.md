@@ -141,7 +141,7 @@ Ersätter basens binära `JARVIS_ALLOW_WRITES` med nivåer. Reglerna ligger i `p
 | Kommando | Implementation | Nivå |
 |---|---|---|
 | "Ladda ner …" | Playwright-MCP hittar länken; `jarvis-media.download_file(url)` hämtar den till `~/Jarvis/Nedladdningar/<typ>/` (vägrar privata/lokala adresser). Bryggan gör en HEAD-förfrågan så att bekräftelsen kan ange filnamn, källa och storlek. | 3 |
-| Körbar fil (.exe, .msi, .bat, .cmd, .ps1, .scr, zip som innehåller sådana) | Läggs i `Nedladdningar/Program/`, skannas med `Start-MpScan -ScanType CustomScan`, **körs aldrig automatiskt** | 3 |
+| Körbar fil (.exe, .msi, .bat, .cmd, .ps1, .scr, zip som innehåller sådana) | Läggs i `Nedladdningar/Program/`, skannas med Microsoft Defender (`MpCmdRun.exe -Scan -ScanType 3 -File …`), **körs aldrig automatiskt** | 3 |
 | "Gör shorts av …" | Två steg: `jarvis-media.transcribe_video(path)` (nivå 1) ger utskrift med tidsstämplar via taltjänsten → Claude väljer 15–60 s långa klipp → `jarvis-media.make_shorts(path, clips=[{start, end, title}], name)` (nivå 2): ffmpeg klipper, beskär 9:16 (1080×1920), bränner in undertexter → `~/Jarvis/Video/Shorts/<datum>_<namn>/short-NN.mp4` + `.srt`. Originalet rörs inte. | 1 / 2 |
 | "Hämta …" | Gmail/Drive-kopplingar, filverktyg, webben. Filer som ett verktyg lagt i temp/arbetsytan (t.ex. bilagor) flyttas på plats med `jarvis-media.store_file(source, kind, description)` – bilagor till `~/Jarvis/Mejlbilagor/ÅÅÅÅ-MM/`. | 1 (läsa) / 2 (spara) |
 | "Öppna/starta …" | Windows-MCP `App` | 2 |
