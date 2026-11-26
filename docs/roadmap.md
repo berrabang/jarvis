@@ -3,7 +3,7 @@
 **Princip:** Jarvis styr allt. Varje nytt område kopplas in som verktyg eller specialistagenter under samma hjärna och samma vakt (`policy.json`). Det betyder:
 
 - Att **läsa, analysera och ta fram utkast** sker direkt.
-- Att **publicera, skicka, ladda upp, betala eller annonsera** ligger på nivå 3 – Jarvis frågar högt och väntar på ditt ja.
+- Att **publicera, skicka, ladda upp, betala eller annonsera** ligger på nivå 3 – Jarvis frågar högt och väntar på ditt ja. **Undantag:** i VD-läget (B+) får Jarvis publicera själv inom ramar som du har godkänt i förväg.
 - Att **skapa konton, lägga riktiga trading-order, betala och kringgå sajters botskydd** nekas alltid.
 
 Varje område nedan får egen spec → plan → bygge (samma process som v1) när det är dags. Ordning: v1 → B → C → D.
@@ -42,9 +42,43 @@ Varje område nedan får egen spec → plan → bygge (samma process som v1) nä
 **Kontoguide för intäkter** (från v1-specen): Jarvis kollar aktuella krav, visar checklista, öppnar registreringssidor – du skapar kontona själv – och kopplar in dem via OAuth.
 
 **Regler som gäller B:**
-- YouTube stänger av intäkter för massproducerat/repetitivt AI-innehåll. Du styr den kreativa riktningen; varje video ska tillföra något eget. Inget autopilot-flöde.
+- YouTube stänger av intäkter för massproducerat/repetitivt AI-innehåll. Du styr den kreativa riktningen (veckomöte med VD:n, se B+). Varje video ska tillföra något eget. Autopilot bara inom VD-lägets ramar.
 - En kanal per plattform.
-- Publicering och schemaläggning är alltid nivå 3.
+- Publicering och schemaläggning är nivå 3, utom inom VD-lägets ramar (B+).
+
+---
+
+## B+ – VD-läge: Jarvis driver innehållsteamet som ett företag (Antons beslut 2026-11-26)
+
+**Mål:** Jarvis är VD. Han överser alla agenter, delar ut och omfördelar arbete, "anställer" fler agenter när en roll inte hinner med, och godkänner publicering själv inom ramar som du har satt. Du sätter riktningen och kan stoppa allt, men behöver inte godkänna varje video.
+
+**Organisation (startbemanning, VD:n kan skala varje roll):**
+
+| Roll | Antal | Gör | Verktyg |
+|---|---|---|---|
+| VD (Jarvis) | 1 | Dagsplan, fördelar uppdrag, granskar, godkänner publicering inom ramarna, rapporterar till dig | Agent SDK + jobbkö |
+| Trendspanare | 1+ | Varje morgon: vad får flest visningar just nu (YouTube, TikTok, Instagram). Lämnar topp 5 idéer med data | vidIQ trending/outliers, TikTok/IG-outliers |
+| Manusförfattare | 1+ | Krok (0–2 s), struktur (krok → upptrappning → twist → loop), titel, omslagskoncept | Claude + vidIQ-skrivregler |
+| Producent | 1+ | Röst, klipp, text ord för ord, vattenstämpel, omslag | `build_short.py`/`roblox_build.py` (finns), jarvis-media, ElevenLabs |
+| Kvalitetsgranskare | 1 | Faktakoll mot källor, upphovsrätt (bara eget/fritt material med kreditering), plattformsregler, AI-märkning, "gjord för barn" | Checklista + webbsökning |
+| Publicerare | 1 | Lägger ut enligt schema och tak | YouTube Data API, TikTok Content Posting API (se nedan) |
+| Analytiker | 1 | Följer upp efter 24 h och 72 h, säger vad som funkar, matar trendspanaren och VD:n | vidIQ-analys |
+
+**Rekrytering:** VD:n startar fler instanser av en roll när kön växer (t.ex. två producenter). Tak: max antal samtidiga agenter och max kostnad per dag (krediter: vidIQ, ElevenLabs, Claude-gränser) i `autonomy.json`.
+
+**Stående fullmakt (`autonomy.json`, du godkänner filen en gång):**
+- Jarvis får publicera själv om: formatet finns på godkänd lista, kvalitetsgranskaren har godkänt, och taket inte är nått (start: 2 per dag och plattform).
+- Varje publicering schemaläggs med 60 minuters fördröjning. Du får en notis (Telegram eller e-post) med en stoppknapp. Sammanfattning varje kväll.
+- Allt utanför ramarna (nytt format, ny plattform, betalning, annonsering) blir nivå 3: Jarvis frågar dig.
+- Nödstopp: "Jarvis, stoppa all publicering" pausar kön direkt.
+- Alltid nekat, även i VD-läget: upphovsrättsskyddat material (scener ur serier/filmer, andras klipp), att skapa konton, att kringgå botskydd, köp och betalningar, och barnvideor utan "gjord för barn"-märkning.
+
+**Tekniskt:**
+- Agent SDK-subagenter per roll + jobbkö i SQLite (research → manus → produktion → granskning → publicering). `start.mjs` och Windows Schemaläggaren startar morgonkörningen.
+- vidIQ:s publiceringsverktyg kräver att du har sett varje utkast, och gratisplanen ger 3 YouTube-uppladdningar om dagen via vidIQ. För verklig autonomi behövs egen publicering:
+  - YouTube Data API med en OAuth-app i ditt eget Google Cloud-projekt.
+  - TikTok Content Posting API: oauditerade appar kan bara posta privat, så appen måste granskas av TikTok först (kan ta upp till två veckor).
+- Risk: YouTubes regler mot massproducerat AI-innehåll. Motåtgärd: kvalitetsgranskaren, varierade format och att du sätter riktningen varje vecka.
 
 ---
 
