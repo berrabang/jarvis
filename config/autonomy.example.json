@@ -1,0 +1,19 @@
+{
+  "_comment": "Kopiera till autonomy.json. Anton godkänner filen en gång; Jarvis (VD) publicerar sedan själv inom ramarna.",
+  "enabled": true,
+  "publish_delay_minutes": 60,
+  "notify": { "channel": "telegram", "stop_button": true, "evening_report": "21:00" },
+  "daily_caps": { "tiktok": 3, "youtube": 2 },
+  "approved_formats": ["fakta-djur", "ai-verktyg", "roblox-pov", "roblox-lista", "barn-farger"],
+  "max_agents_per_role": 3,
+  "max_queue_per_agent": 2,
+  "daily_budget": { "vidiq_credits": 10, "elevenlabs_chars": 3000 },
+  "always_denied": [
+    "upphovsrättsskyddat material (serier, filmer, andras klipp)",
+    "skapa konton",
+    "kringgå botskydd",
+    "köp och betalningar",
+    "barninnehåll utan 'gjord för barn'"
+  ],
+  "emergency_stop_phrase": "stoppa all publicering"
+}
