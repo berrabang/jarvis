@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jarvis HQ – agentkontoret</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* VOICE everyday: a control room you watch like an aquarium
+   IDEA a top-down office floor plan, BerraBang's HQ after dark
+   PICTURE the live floor: desks with glowing screens, agents walking corridors carrying task cards
+   COLOUR one night palette in both themes: near-black ground, cyan #00F5F5 lead, magenta #FF2EC4 accent, one hue per role
+   TYPE Inter 800 for names and figures, Inter 400/500 for text
+   LAYOUT laptop: floor left, log panel right; phone: floor in its own sideways scroller, panel below */
+:root{color-scheme:dark;--bg:#07070b;--panel:#0e0e16;--line:#1c1c29;--ink:#f2f2f7;--mute:#a0a0b2;--cyan:#00F5F5;--mag:#FF2EC4;--red:#ff4d5e}
+:root[data-theme=light],:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,sans-serif;overflow-x:clip}
+.app{display:grid;grid-template-columns:minmax(0,1fr) 320px;grid-template-rows:auto minmax(0,1fr);height:100%}
+header{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:12px max(2vw,16px);border-bottom:1px solid var(--line)}
+header h1{font-size:22px;font-weight:800;margin:0;letter-spacing:-.02em;line-height:1.1}
+header h1 b{color:var(--cyan)}
+.mode{font-size:13px;color:var(--mute);border:1px solid var(--line);border-radius:999px;padding:3px 10px;white-space:nowrap}
+.mode.live{color:#07070b;background:var(--cyan);border-color:var(--cyan);font-weight:700}
+.clock{margin-left:auto;font-weight:800;font-size:22px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.floorwrap{position:relative;overflow-x:auto;overflow-y:hidden}
+.floor{position:relative;min-width:760px;height:100%;min-height:420px}
+.floor canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+aside{border-left:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;gap:14px;padding:16px;overflow:hidden}
+.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.stat{background:#15151f;border-radius:10px;padding:8px 12px}
+.stat span{display:block;font-size:13px;color:var(--mute)}
+.stat strong{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.2}
+.btns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+button{font:inherit;font-weight:700;min-height:44px;border-radius:10px;border:1px solid #2a2a3c;background:#16161f;color:var(--ink);cursor:pointer;padding:0 10px}
+button:hover{border-color:var(--cyan)}
+button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+#stop{border-color:#5a2230}
+#stop[aria-pressed=true]{background:var(--red);border-color:var(--red);color:#fff}
+.note{font-size:13px;color:var(--mute);margin:0}
+.log{flex:1;overflow-y:auto;margin:0;padding:10px 0 0;list-style:none;font-size:13px;border-top:1px solid var(--line)}
+.log li{display:grid;grid-template-columns:3.3em minmax(0,1fr);gap:8px;padding:5px 0;border-bottom:1px solid #16161f}
+.log time{color:var(--mute);font-variant-numeric:tabular-nums}
+.log i{font-style:normal;font-weight:700}
+@media(max-width:820px){.app{grid-template-columns:minmax(0,1fr);grid-template-rows:auto 64vh auto;height:auto}aside{border-left:0;border-top:1px solid var(--line)}.log{max-height:340px}header h1{font-size:18px}.clock{font-size:18px}}
+</style>
+</head>
+<body>
+<div class="app">
+<header><h1>Jarvis <b>HQ</b> · agentkontoret</h1><span class="mode" id="mode">Ansluter…</span><span class="clock" id="clock">08:00</span></header>
+<div class="floorwrap"><div class="floor" id="floor"><canvas id="cv" role="img" aria-label="Kontoret uppifrån: agenter går mellan sina skrivbord och lämnar över uppdrag. Händelserna står i loggen."></canvas></div></div>
+<aside>
+<div class="stats">
+<div class="stat"><span>Idéer</span><strong id="sIdea">0</strong></div>
+<div class="stat"><span>Manus</span><strong id="sScript">0</strong></div>
+<div class="stat"><span>Videor</span><strong id="sVideo">0</strong></div>
+<div class="stat"><span>Publicerade idag</span><strong id="sPub">0</strong></div>
+</div>
+<div class="btns"><button id="hire" type="button">Anställ producent</button><button id="stop" type="button" aria-pressed="false">Nödstopp</button></div>
+<p class="note">Exempeldata i demo-läge. När Jarvis körs lokalt visas de riktiga agenterna här.</p>
+<ul class="log" id="log" aria-live="polite"></ul>
+</aside>
+</div>
+<script>
+{
+/* ---------- värld ---------- */
+const VW=1000,VH=640,CY1=232,CY2=424,AISLES=[60,340,660,940],DOOR={x:22,y:CY2},SPEED=4;
+const C={cyan:'#00F5F5',mag:'#FF2EC4',ink:'#f2f2f7',mute:'#a0a0b2',red:'#ff4d5e'};
+const ROLES={vd:['Jarvis','VD','#00F5F5'],trend:['Trendspanare','TS','#FF2EC4'],manus:['Manusförfattare','MF','#a48cff'],prod:['Producent','P','#3ee08f'],qa:['Kvalitetsgranskare','KG','#ffc94d'],pub:['Publicerare','PU','#ff7aa8'],ana:['Analytiker','AN','#7fb2ff']};
+const IDEAS=['POV: NPC i GTA 6','Flamingor föds grå','5 typer av obby-spelare','Katter känner inte sött','Zebrornas ränder','3 gratis AI-verktyg','Roblox: säga vs mena','Varför tigrar är orange','GTA 6-körskolan','Lär dig färger med djur','Bläckfiskens tre hjärtan'];
+const SLOTS=['11:00','13:00','15:00','17:00','20:00','23:00'];
+const PSLOTS=[95,210,325,440];
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d'),floor=document.getElementById('floor');
+const fit=()=>{const r=floor.getBoundingClientRect(),d=devicePixelRatio||1,s=Math.min(r.width/VW,r.height/VH);cv.width=Math.round(r.width*d);cv.height=Math.round(r.height*d);ctx.setTransform(d*s,0,0,d*s,d*(r.width-VW*s)/2,d*(r.height-VH*s)/2)};
+const floorRO=new ResizeObserver(fit);floorRO.observe(floor);
+let simMin=8*60,day=1,stopped=false,live=false,lastHire=-99,slotI=0,ideaI=0,reported=false,uid=0,now=0;
+const stats={idea:0,script:0,video:0,pub:0};
+const desks=[],agents=[],flights=[],bursts=[],jobs=[],prods=[],sched=[];
+const front=d=>d.y>CY2?d.y-d.h/2-18:d.y+d.h/2+18;
+function desk(role,x,y,w,h){const d={role,x,y,w,h,screen:'Väntar…',pct:-1,born:now,inbox:[],agent:null};desks.push(d);return d}
+function agent(role,d,name,isNew){const a={id:++uid,role,desk:d,name,x:isNew?DOOR.x:d.x,y:isNew?DOOR.y:front(d),state:'idle',path:null,trail:[],card:null,bubble:null,job:null,work:null,wait:null,newUntil:isNew?now+9:0};d.agent=a;agents.push(a);if(isNew){a.bubble={txt:'Hej allihop!',until:now+2.5};walk(a,home(a),null)}return a}
+const home=a=>({x:a.desk.x,y:front(a.desk)});
+const D={trend:desk('trend',180,128,150,76),manus:desk('manus',500,118,150,76),ana:desk('ana',820,128,150,76),vd:desk('vd',500,316,196,86),qa:desk('qa',600,534,140,70),pub:desk('pub',830,534,150,70)};
+const A={};for(const k in D)A[k]=agent(k,D[k],ROLES[k][0]);
+hireProducer(false);
+function hireProducer(isNew){if(prods.length>=PSLOTS.length)return false;const d=desk('prod',PSLOTS[prods.length],534,106,70);const a=agent('prod',d,'Producent '+(prods.length+1),isNew);prods.push(a);if(isNew)log('Jarvis',C.cyan,'anställer '+a.name+', ny plats i studion');return true}
+/* gångvägar: korridorer y=CY1/CY2, gångar x=AISLES */
+const lane=p=>p.y<CY1?CY1:CY2;
+function route(p,q){const pts=[{x:p.x,y:p.y}],y1=lane(p),y2=lane(q);pts.push({x:p.x,y:y1});if(y1!==y2){const m=(p.x+q.x)/2,ax=AISLES.reduce((b,v)=>Math.abs(v-m)<Math.abs(b-m)?v:b);pts.push({x:ax,y:y1},{x:ax,y:y2})}pts.push({x:q.x,y:y2},{x:q.x,y:q.y});return pts.filter((v,i,s)=>!i||v.x!==s[i-1].x||v.y!==s[i-1].y)}
+function walk(a,to,then){const pts=route(a,to),seg=[];let L=0;for(let i=1;i<pts.length;i++){const l=Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y);seg.push(l);L+=l}if(!seg.length){seg.push(0);pts.push(pts[0])}a.path={pts,seg,L,t:0,dur:Math.max(.5,L/160)};a.state='walk';a.then=then}
+function posOn(p,f){let d=f*p.L;for(let i=0;i<p.seg.length;i++){if(d<=p.seg[i]||i===p.seg.length-1){const k=p.seg[i]?Math.min(1,d/p.seg[i]):1;return{x:p.pts[i].x+(p.pts[i+1].x-p.pts[i].x)*k,y:p.pts[i].y+(p.pts[i+1].y-p.pts[i].y)*k}}d-=p.seg[i]}return p.pts[p.pts.length-1]}
+const ease=t=>t<.5?2*t*t:1-((-2*t+2)**2)/2;
+const pad=n=>String(n).padStart(2,'0');
+const clockStr=()=>{const m=Math.floor(simMin)%1440;return pad(Math.floor(m/60))+':'+pad(m%60)};
+/* ---------- logg + panel ---------- */
+const el=id=>document.getElementById(id),logEl=el('log');
+function log(who,col,txt){const li=document.createElement('li'),t=document.createElement('time'),s=document.createElement('span'),b=document.createElement('i');t.textContent=clockStr();b.style.color=col;b.textContent=who+' ';s.append(b,document.createTextNode(txt));li.append(t,s);logEl.prepend(li);while(logEl.children.length>60)logEl.lastChild.remove()}
+function setMode(t,on){const m=el('mode');m.textContent=t;m.classList.toggle('live',!!on)}
+/* ---------- arbetsflöde (demo) ---------- */
+const STAGE={idea:[4.5,'Spanar: '],ireview:[1.6,'Läser idé: '],script:[5,'Skriver: '],sreview:[1.6,'Granskar manus: '],render:[7,'Klipper '],review:[3,'Faktakoll: '],publish:[2.4,'Laddar upp: '],report:[1.8,'Läser kvällsrapporten'],focus:[1.4,'Läser: morgondagens fokus'],live:[.1,'']};
+function start(a,it){a.state='work';a.job=it.job;if(it.job)it.job.role=a.role;a.work={stage:it.stage,t:0,dur:STAGE[it.stage][0]*(.8+Math.random()*.5)}}
+function handoff(a,to,stage,card,said){const spot={x:to.x+34,y:front(to)};a.card=card;a.desk.pct=-1;a.desk.screen='Går till '+(to.agent?to.agent.name:'');walk(a,spot,()=>{a.bubble={txt:said,until:now+2};const job=a.job;flights.push({card,x:a.x+14,y:a.y-30,tx:to.x+to.w/2-16,ty:to.y-to.h/2+4,t:0,done:()=>to.inbox.push({job,stage})});log(a.name,ROLES[a.role][2],'→ '+(to.agent?to.agent.name:'')+': '+card);a.card=null;a.state='pause';a.wait={until:now+.7,fn:()=>walk(a,home(a),()=>{a.state='idle';a.job=null})}})}
+const load=p=>p.desk.inbox.length+(p.state==='idle'?0:1);
+const least=()=>prods.reduce((b,p)=>load(p)<load(b)?p:b);
+function finish(a){const st=a.work.stage,j=a.job;a.work=null;a.state='idle';
+ if(st==='idea'){stats.idea++;handoff(a,D.vd,'ireview','Idé: '+j.title,'Ny idé på gång!')}
+ else if(st==='ireview')handoff(a,D.manus,'script','Uppdrag: '+j.title,'Skriv manus på den här');
+ else if(st==='script'){stats.script++;handoff(a,D.vd,'sreview','Manus v'+j.v+': '+j.title,'Manus klart!')}
+ else if(st==='sreview'){j.prod=j.prod||least();handoff(a,j.prod.desk,'render','Godkänt manus','Kör, grönt ljus!')}
+ else if(st==='render'){stats.video++;handoff(a,D.qa,'review','Video klar'+(j.v>1?' v'+j.v:''),'Kolla den här')}
+ else if(st==='review'){if(Math.random()<.2&&j.v<3){j.v++;handoff(a,j.prod.desk,'render','Underkänd: källa saknas','Fixa källan, tack')}else handoff(a,D.pub,'publish','Godkänd ✓','Godkänd!')}
+ else if(st==='publish'){const slot=SLOTS[slotI++%SLOTS.length];stats.pub++;j.done=true;sched.push({slot,title:j.title});if(sched.length>20)sched.shift();bursts.push({x:D.pub.x,y:D.pub.y-D.pub.h/2-10,t:0,slot});log('Publicerare',ROLES.pub[2],'schemalagd '+slot+' på TikTok + YouTube: '+j.title);a.bubble={txt:'Schemalagd '+slot,until:now+2.2}}
+ else if(st==='report')handoff(a,D.trend,'focus','Morgondagens fokus','Mer GTA 6 i morgon!');
+ if(a.state==='idle')a.job=null}
+function newJob(a){const j={id:++uid,title:IDEAS[ideaI++%IDEAS.length],v:1};jobs.push(j);if(jobs.length>40)jobs.splice(0,jobs.length-40);start(a,{job:j,stage:'idea'})}
+function tickAgents(dt){
+ for(const a of agents){
+  if(a.state==='walk'){a.path.t+=dt;const f=Math.min(1,a.path.t/a.path.dur),p=posOn(a.path,ease(f));a.x=p.x;a.y=p.y;if(!reduce)a.trail.push({x:a.x,y:a.y,t:now});if(f>=1){a.path=null;a.state='idle';const fn=a.then;a.then=null;if(fn)fn()}}
+  if(a.trail.length)a.trail=a.trail.filter(p=>now-p.t<1.1);
+  if(a.state==='pause'&&now>=a.wait.until){const fn=a.wait.fn;a.wait=null;fn()}
+  if(a.state==='work'){const w=a.work,lbl=STAGE[w.stage][1],pc=Math.min(100,Math.round(w.t/w.dur*100));
+   if(w.stage==='publish'&&stopped){a.desk.screen='Pausad – nödstopp';a.desk.pct=-1}
+   else{w.t+=dt;a.desk.screen=w.stage==='render'?lbl+pc+'%':lbl+(w.stage==='report'||w.stage==='focus'?'':a.job.title);a.desk.pct=pc;if(w.t>=w.dur)finish(a)}}
+  if(a.state==='idle'){a.desk.pct=-1;const it=a.desk.inbox.shift();
+   if(it)start(a,it);
+   else if(a.role==='trend'&&!live&&jobs.filter(j=>!j.done).length<5)newJob(a);
+   else a.desk.screen=a.role==='pub'&&stopped?'Pausad – nödstopp':'Väntar…'}}
+ const q=prods.reduce((s,p)=>s+p.desk.inbox.length,0);
+ if(!live&&q>2&&now-lastHire>25&&prods.length<PSLOTS.length){lastHire=now;A.vd.bubble={txt:'Vi behöver en producent till!',until:now+2.5};hireProducer(true)}
+ for(const f of flights){f.t+=dt*2.2;if(f.t>=1&&!f.landed){f.landed=true;f.done()}}
+ for(let i=flights.length-1;i>=0;i--)if(flights[i].t>1.3)flights.splice(i,1);
+ for(const b of bursts)b.t+=dt;for(let i=bursts.length-1;i>=0;i--)if(bursts[i].t>2.4)bursts.splice(i,1)}
+function tickClock(dt){
+ if(live){const d=new Date();simMin=d.getHours()*60+d.getMinutes();return}
+ simMin+=dt*SPEED;const m=Math.floor(simMin);
+ if(m>=21*60&&!reported){reported=true;const a=A.ana;if(a.state==='idle'){a.job={title:'Dagens siffror',v:1};handoff(a,D.vd,'report','Kvällsrapport','Dagens siffror!')}}
+ if(simMin>=24*60){simMin=8*60;day++;reported=false;stats.pub=0;sched.length=0;log('Jarvis',C.cyan,'god morgon, dag '+day+' börjar')}}
+/* ---------- rita ---------- */
+function rr(x,y,w,h,r){ctx.beginPath();if(ctx.roundRect)ctx.roundRect(x,y,w,h,r);else ctx.rect(x,y,w,h)}
+function fitText(t,w){if(ctx.measureText(t).width<=w)return t;while(t.length>1&&ctx.measureText(t+'…').width>w)t=t.slice(0,-1);return t+'…'}
+function card(t,x,y,col){ctx.font='700 11px Inter,sans-serif';const w=Math.min(200,ctx.measureText(t).width+18);ctx.shadowColor=col;ctx.shadowBlur=reduce?0:16;ctx.fillStyle='#10101a';rr(x,y,w,22,6);ctx.fill();ctx.shadowBlur=0;ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.stroke();ctx.fillStyle=C.ink;ctx.textAlign='left';ctx.fillText(fitText(t,w-14),x+8,y+15)}
+function drawFloor(){
+ ctx.fillStyle='#0b0b12';rr(0,0,VW,VH,18);ctx.fill();
+ ctx.strokeStyle='#12121b';ctx.lineWidth=1;ctx.beginPath();for(let x=40;x<VW;x+=40){ctx.moveTo(x,0);ctx.lineTo(x,VH)}for(let y=40;y<VH;y+=40){ctx.moveTo(0,y);ctx.lineTo(VW,y)}ctx.stroke();
+ const corridor=()=>{ctx.beginPath();for(const y of[CY1,CY2]){ctx.moveTo(60,y);ctx.lineTo(940,y)}for(const x of AISLES){ctx.moveTo(x,CY1);ctx.lineTo(x,CY2)}ctx.moveTo(0,CY2);ctx.lineTo(60,CY2);ctx.stroke()};
+ ctx.lineCap='round';ctx.strokeStyle='#15151f';ctx.lineWidth=22;corridor();ctx.strokeStyle='#ffffff0c';ctx.lineWidth=1;ctx.setLineDash([6,10]);corridor();ctx.setLineDash([]);ctx.lineCap='butt';
+ ctx.fillStyle=C.mag;ctx.fillRect(0,CY2-24,5,48);ctx.fillStyle=C.mute;ctx.font='600 12px Inter,sans-serif';ctx.textAlign='left';ctx.fillText('Entré',12,CY2-30);
+ board(86,258,228,142,'Idétavla',jobs.filter(j=>!j.done).slice(-5).map(j=>[ROLES[j.role||'trend'][2],j.title,j.v>1?'v'+j.v:'']),'Inga idéer än');
+ board(686,258,228,142,'Publiceringsschema',sched.slice(-5).reverse().map(s=>[stopped?C.red:ROLES.pub[2],s.slot+'  '+s.title,'TT+YT']),stopped?'Pausat av nödstoppet':'Inget schemalagt än');
+ ctx.fillStyle='#ffffff09';ctx.font='800 48px Inter,sans-serif';ctx.textAlign='left';ctx.fillText('BERRABANG',24,VH-22)}
+function board(x,y,w,h,title,rows,empty){ctx.fillStyle='#101019';rr(x,y,w,h,10);ctx.fill();ctx.strokeStyle='#23233a';ctx.lineWidth=1;ctx.stroke();
+ ctx.fillStyle=C.mute;ctx.font='700 12px Inter,sans-serif';ctx.textAlign='left';ctx.fillText(title,x+12,y+20);
+ ctx.font='500 12px Inter,sans-serif';if(!rows.length){ctx.fillStyle='#5c5c70';ctx.fillText(empty,x+12,y+44)}
+ rows.forEach(([col,t,tag],i)=>{const ly=y+42+i*21;ctx.fillStyle=col;ctx.beginPath();ctx.arc(x+16,ly-4,4,0,7);ctx.fill();ctx.fillStyle=C.ink;ctx.fillText(fitText(t,w-(tag?78:40)),x+28,ly);if(tag){ctx.fillStyle=C.mute;ctx.textAlign='right';ctx.fillText(tag,x+w-12,ly);ctx.textAlign='left'}})}
+function drawDesk(dk){const col=ROLES[dk.role][2],red=dk.role==='pub'&&stopped,lit=dk.pct>=0;ctx.globalAlpha=Math.min(1,(now-dk.born)/1.2);
+ const x=dk.x-dk.w/2,y=dk.y-dk.h/2;
+ ctx.fillStyle='#00000066';rr(x+4,y+6,dk.w,dk.h,12);ctx.fill();
+ ctx.fillStyle='#15151f';rr(x,y,dk.w,dk.h,12);ctx.fill();ctx.lineWidth=2;ctx.strokeStyle=red?C.red:col+(lit?'':'99');ctx.stroke();
+ if(lit&&!reduce){ctx.shadowColor=col;ctx.shadowBlur=12}
+ ctx.fillStyle=red?'#3a0f16':'#05060a';rr(x+10,y+10,dk.w-20,dk.h-36,6);ctx.fill();ctx.shadowBlur=0;
+ ctx.fillStyle=red?C.red:col;ctx.font='500 12px Inter,sans-serif';ctx.fillText(fitText(dk.screen,dk.w-32),x+16,y+27);
+ if(lit){ctx.fillStyle='#24243a';ctx.fillRect(x+16,y+33,dk.w-32,4);ctx.fillStyle=col;ctx.fillRect(x+16,y+33,(dk.w-32)*dk.pct/100,4)}
+ ctx.fillStyle=C.ink;ctx.font='700 13px Inter,sans-serif';ctx.fillText(fitText(dk.agent?dk.agent.name:'',dk.w-24),x+12,y+dk.h-10);
+ if(dk.inbox.length){ctx.fillStyle=C.mag;ctx.beginPath();ctx.arc(x+dk.w-10,y,11,0,7);ctx.fill();ctx.fillStyle='#000';ctx.font='800 12px Inter,sans-serif';ctx.textAlign='center';ctx.fillText(dk.inbox.length,x+dk.w-10,y+4);ctx.textAlign='left'}
+ ctx.globalAlpha=1}
+function drawAgent(a){const col=ROLES[a.role][2];
+ for(const p of a.trail){const k=now-p.t;if((Math.round(p.x+p.y)%10)>2)continue;ctx.globalAlpha=Math.max(0,.55-k*.5);ctx.fillStyle=col;ctx.beginPath();ctx.arc(p.x,p.y+12,1.8,0,7);ctx.fill()}ctx.globalAlpha=1;
+ if(a.path){ctx.setLineDash([2,8]);ctx.strokeStyle=col+'55';ctx.lineWidth=2;ctx.beginPath();const f=ease(Math.min(1,a.path.t/a.path.dur));for(let k=f;k<=1.0001;k+=.02){const p=posOn(a.path,Math.min(1,k));k===f?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y)}ctx.stroke();ctx.setLineDash([])}
+ const bob=a.state==='walk'&&!reduce?Math.abs(Math.sin(now*12+a.id))*-3:0,y=a.y+bob;
+ ctx.fillStyle='#0009';ctx.beginPath();ctx.ellipse(a.x,a.y+15,12,4,0,0,7);ctx.fill();
+ ctx.fillStyle=col;ctx.beginPath();ctx.arc(a.x,y,15,0,7);ctx.fill();ctx.strokeStyle='#ffffff55';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(a.x,y,15,3.6,5.4);ctx.stroke();
+ ctx.fillStyle='#07070b';ctx.font='800 11px Inter,sans-serif';ctx.textAlign='center';ctx.fillText(ROLES[a.role][1]+(a.role==='prod'?a.name.slice(-1):''),a.x,y+4);
+ if(a.state==='walk'||a.state==='pause'){ctx.font='600 11px Inter,sans-serif';const w=ctx.measureText(a.name).width+10;ctx.fillStyle='#07070bcc';rr(a.x-w/2,y+20,w,16,8);ctx.fill();ctx.fillStyle=C.ink;ctx.fillText(a.name,a.x,y+32)}
+ if(a.newUntil>now){ctx.fillStyle=C.mag;rr(a.x+9,y-27,32,16,8);ctx.fill();ctx.fillStyle='#000';ctx.font='800 10px Inter,sans-serif';ctx.fillText('Ny!',a.x+25,y-15)}
+ ctx.textAlign='left';if(a.card)card(a.card,a.x+14,y-38,col);
+ if(a.bubble&&a.bubble.until>now){ctx.font='600 12px Inter,sans-serif';const w=ctx.measureText(a.bubble.txt).width+20,by=y-(a.card?68:56),bx=Math.max(4,Math.min(VW-w-4,a.x-w/2));ctx.fillStyle=C.ink;rr(bx,by,w,24,12);ctx.fill();ctx.beginPath();ctx.moveTo(a.x-6,by+23);ctx.lineTo(a.x+6,by+23);ctx.lineTo(a.x,by+31);ctx.fill();ctx.fillStyle='#07070b';ctx.textAlign='center';ctx.fillText(a.bubble.txt,bx+w/2,by+16);ctx.textAlign='left'}}
+function draw(){
+ ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#07070b';ctx.fillRect(0,0,cv.width,cv.height);ctx.restore();
+ drawFloor();for(const d of desks)drawDesk(d);
+ const order=agents.slice().sort((p,q)=>p.y-q.y);for(const a of order)drawAgent(a);
+ for(const f of flights){const k=ease(Math.min(1,f.t)),x=f.x+(f.tx-f.x)*k,y=f.y+(f.ty-f.y)*k-Math.sin(k*Math.PI)*34;ctx.globalAlpha=f.t>1?Math.max(0,1-(f.t-1)/.3):1;card(f.card,x,y,C.cyan);ctx.globalAlpha=1}
+ for(const b of bursts){const k=b.t/2.4;ctx.globalAlpha=Math.max(0,1-k);ctx.font='800 13px Inter,sans-serif';ctx.textAlign='center';ctx.fillStyle=C.cyan;ctx.fillText('↑ TikTok',b.x-44,b.y-k*50);ctx.fillStyle=C.red;ctx.fillText('↑ YouTube',b.x+44,b.y-k*50);ctx.fillStyle=C.ink;ctx.font='700 12px Inter,sans-serif';ctx.fillText('Schemalagd '+b.slot,b.x,b.y-22-k*36);ctx.textAlign='left';ctx.globalAlpha=1}
+ const m=Math.floor(simMin)%1440,night=m>=19*60?Math.min(.3,(m-19*60)/300):0;
+ if(night){ctx.fillStyle='rgba(8,8,40,'+night+')';rr(0,0,VW,VH,18);ctx.fill()}}
+function hud(){el('clock').textContent=clockStr();el('sIdea').textContent=stats.idea;el('sScript').textContent=stats.script;el('sVideo').textContent=stats.video;el('sPub').textContent=stats.pub}
+el('hire').addEventListener('click',()=>{if(!hireProducer(true))log('Jarvis',C.cyan,'alla platser är fulla (max 4 producenter)')});
+el('stop').addEventListener('click',e=>{stopped=!stopped;const b=e.currentTarget;b.setAttribute('aria-pressed',String(stopped));b.textContent=stopped?'Nödstopp på':'Nödstopp';log('Anton',C.red,stopped?'drog i nödstoppet, ingen publicering':'släppte nödstoppet')});
+/* ---------- live-krok: bryggan på ws://localhost:8787 skickar
+   {type:'agent',id,role,status,task,tool,progress} och {type:'handoff',from,to,card} ---------- */
+const ALIAS={vd:'vd',jarvis:'vd',trendspanare:'trend',trend:'trend',manusforfattare:'manus',manus:'manus',producent:'prod',prod:'prod',kvalitetsgranskare:'qa',qa:'qa',publicerare:'pub',pub:'pub',analytiker:'ana',ana:'ana'};
+const findAgent=(role,id)=>agents.find(x=>id&&x.name===id)||(ALIAS[role]==='prod'?least():A[ALIAS[role]]);
+function liveAgent(m){const a=findAgent(String(m.role||'').toLowerCase(),m.id);if(!a)return;a.desk.screen=String(m.task||m.status||'')+(m.tool?' · '+m.tool:'');a.desk.pct=typeof m.progress==='number'?Math.max(0,Math.min(100,m.progress)):-1}
+function liveHandoff(m){const a=findAgent(String(m.from||'').toLowerCase()),t=findAgent(String(m.to||'').toLowerCase());if(a&&t&&a!==t&&a.state!=='walk'){a.job={title:String(m.card||''),v:1};handoff(a,t.desk,'live',String(m.card||'Uppdrag'),String(m.card||'Här!'))}}
+function connect(){try{const ws=new WebSocket('ws://localhost:8787');ws.onopen=()=>{live=true;setMode('Live',true);log('Jarvis',C.cyan,'ansluten till bryggan, riktiga agenter')};ws.onmessage=e=>{try{const m=JSON.parse(e.data);if(m.type==='agent')liveAgent(m);else if(m.type==='handoff')liveHandoff(m)}catch(err){}};ws.onclose=()=>{if(live)log('Jarvis',C.cyan,'tappade bryggan, kör demo');live=false;setMode('Demo-läge')}}catch(err){setMode('Demo-läge')}}
+connect();setTimeout(()=>{if(!live){setMode('Demo-läge');log('Jarvis',C.cyan,'ingen brygga hittades, kör demo-läge')}},1500);
+/* ---------- loop ---------- */
+fit();{const w=floor.parentElement;w.scrollLeft=(w.scrollWidth-w.clientWidth)/2}log('Jarvis',C.cyan,'god morgon team, dagens mål: 3 YouTube och 6 TikTok');
+let last=performance.now();
+function frame(t){const dt=Math.min(.05,Math.max(0,(t-last)/1000));last=t;now+=dt;tickClock(dt);tickAgents(dt);draw();hud();requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+}
+</script>
+</body>
+</html>
