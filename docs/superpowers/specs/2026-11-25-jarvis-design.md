@@ -13,7 +13,7 @@ En röststyrd assistent på Antons Windows-PC som han pratar med ("Jarvis, …")
 
 **I version 1 (detta dokument):** röst in/ut, HUD, hjärna via Claude-abonnemanget, vakt i tre nivåer, minne, mappstruktur, förmågorna ladda ner / hämta / öppna / göra enkla shorts.
 
-**Inte i version 1** (egna delprojekt med egen spec senare):
+**Inte i version 1** (egna delprojekt med egen spec senare – se `docs/roadmap.md` för B, C, D och verktygen som ska utvärderas):
 
 | Delprojekt | Innehåll |
 |---|---|
@@ -99,7 +99,7 @@ Ersätter basens binära `JARVIS_ALLOW_WRITES` med nivåer. Reglerna ligger i `p
 | 1 Läsa | `allow` | Read/Glob/Grep, WebSearch, WebFetch (med SSRF-skydd), Gmail sök/läs, Calendar lista/läs, Drive sök/läs, Windows-MCP Snapshot/Screenshot, `recall` |
 | 2 Små, ångerbara | `allow` + loggas i HUD | Öppna app, volym/media, Gmail `create_draft`, Calendar `create_event` **utan** inbjudna, `remember`, skriva/skapa inne i `~/Jarvis/`, `make_shorts` |
 | 3 Fråga | `ask` | Skicka/svara/vidarebefordra mejl (Gmail och Outlook), event med inbjudna, ändra/ta bort event, radera, Bash/PowerShell, Windows-MCP Click/Type/Shortcut, flytta/döpa om utanför `~/Jarvis/`, ladda ner, Drive-delning, `forget`, publicering |
-| Neka | `deny` | Hemlighetssökvägar, betalningar/köp, stänga av Defender/brandvägg, registerskrivning, skapa konton, läsa/skriva minnesfiler med andra verktyg än `jarvis-memory` |
+| Neka | `deny` | Hemlighetssökvägar, betalningar/köp, riktiga trading-order (verktyg som heter *trade* / *place order*), stänga av Defender/brandvägg, registerskrivning, skapa konton, läsa/skriva minnesfiler med andra verktyg än `jarvis-memory` |
 
 **Regler:**
 - Okänt verktyg ⇒ `ask` tills det klassats i `policy.json`.
