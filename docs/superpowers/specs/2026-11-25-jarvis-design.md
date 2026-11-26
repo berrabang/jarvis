@@ -17,8 +17,8 @@ En röststyrd assistent på Antons Windows-PC som han pratar med ("Jarvis, …")
 
 | Delprojekt | Innehåll |
 |---|---|
-| **B – Innehållsteam** | Specialistagenter för research, manus, visuellt, klipp och publicering. Kontoguide för intäkter (YouTube, AdSense, TikTok m.fl.). Uppladdning via officiella API:er/OAuth. Byggs efter v1. |
-| **v2 – Svenska** | Svensk talsyntes (t.ex. ElevenLabs/Azure). Taligenkänningen i v1 är redan språkmedveten. |
+| **B – Innehållsteam** | Specialistagenter för research, manus, visuellt, klipp och publicering, i första hand via de redan kopplade claude.ai-kopplingarna **vidIQ** (research, titlar, thumbnails, klipp, uppladdning, publicering) och **Canva** (grafik). Kontoguide för intäkter (YouTube, AdSense, TikTok m.fl.). Byggs efter v1. |
+| **v2 – Svenska** | Svensk talsyntes via **ElevenLabs** (Anton har konto; forken stöder redan ElevenLabs-röst med nyckel). Taligenkänningen i v1 är redan språkmedveten. |
 | **Senare** | Ikon i systemfältet som startar allt vid inloggning, semantisk minnessökning, mobilåtkomst. |
 
 ## 2. Fattade beslut
@@ -40,8 +40,8 @@ Allt körs lokalt på datorn `antons` (Windows 11, x64).
 
 ```
  Mikrofon ──► HUD i Chrome/Edge (localhost:5173)
-              │  Porcupine "Jarvis" (WASM, offline)
               │  VAD + inspelning av en replik
+              │  "Jarvis" känns igen i lokal utskrift
               │  Kokoro-röst (i webbläsaren)
               │  Bekräftelsekort (nivå 3)
               ▼ WebSocket / HTTP
@@ -67,10 +67,10 @@ Allt körs lokalt på datorn `antons` (Windows 11, x64).
 
 ### 4.1 Väckningsord
 
-- Motor: **Porcupine** (`@picovoice/porcupine-web`, redan beroende i basen). Inbyggt nyckelord "Jarvis", körs offline i WASM.
-- Aktiveras genom att sätta `VITE_PICOVOICE_ACCESS_KEY` i `.env.local` (gratis nyckel från console.picovoice.ai, Anton skapar kontot).
-- Basens reservläge `speech` (webbläsarens SpeechRecognition) skickar ljud till Google och **ska inte användas**. Utan nyckel startar Jarvis i push-to-talk-läge i stället (ändring i `src/config.ts`).
-- Om Picovoice-villkoren inte passar: ersätt med openWakeWord-WASM ("hey jarvis"-modellen) bakom samma gränssnitt.
+- Forkens egen logik behålls: VAD i webbläsaren fångar varje replik, bryggans `/stt` skriver ut den, och regexen `WAKE` i `src/lib/voice.ts` känner igen "Jarvis" (plus vanliga felhörningar). Med taltjänsten i §4.2 sker allt lokalt – inget ljud lämnar datorn.
+- (`VITE_PICOVOICE_ACCESS_KEY`/Porcupine finns deklarerat i forkens `config.ts` men är aldrig inkopplat; det används inte.)
+- Webbläsarens SpeechRecognition (skickar ljud till Google) **ska aldrig startas**. Om taltjänsten saknas visar HUD:n ett textfält i stället (§4.2).
+- Mellanslag = push-to-talk som förut.
 
 ### 4.2 Taltjänst (ny)
 
@@ -79,6 +79,7 @@ Allt körs lokalt på datorn `antons` (Windows 11, x64).
 - Lyssnar endast på `127.0.0.1:8790`.
 - Kontrakt:
   - `POST /transcribe` – body: rå ljudbytes (`audio/webm`, `audio/ogg`, `audio/wav`, `audio/mp4`), header `Content-Type`. Svar `200 {"text": "...", "language": "en", "duration_ms": 1234}`.
+  - `POST /transcribe?segments=1` – samma, plus `"segments": [{"start": 0.0, "end": 2.4, "text": "..."}]` (sekunder). Används av shorts-verktyget.
   - `GET /health` – `200 {"ok": true, "model": "small"}`.
   - Fel: `400` okänt format, `413` > 25 MB, `500` med felmeddelande.
 - Bryggans `/stt` väljer motor via `JARVIS_STT=local|elevenlabs` (standard `local`). I `local` vidarebefordras bytes oförändrade till taltjänsten; svarsformatet mot HUD:n är oförändrat (`{text}`), med `language` som extra fält.
@@ -97,7 +98,7 @@ Ersätter basens binära `JARVIS_ALLOW_WRITES` med nivåer. Reglerna ligger i `p
 |---|---|---|
 | 1 Läsa | `allow` | Read/Glob/Grep, WebSearch, WebFetch (med SSRF-skydd), Gmail sök/läs, Calendar lista/läs, Drive sök/läs, Windows-MCP Snapshot/Screenshot, `recall` |
 | 2 Små, ångerbara | `allow` + loggas i HUD | Öppna app, volym/media, Gmail `create_draft`, Calendar `create_event` **utan** inbjudna, `remember`, skriva/skapa inne i `~/Jarvis/`, `make_shorts` |
-| 3 Fråga | `ask` | Skicka/svara/vidarebefordra mejl, event med inbjudna, ändra/ta bort event, radera, Bash/PowerShell, Windows-MCP Click/Type/Shortcut, flytta/döpa om utanför `~/Jarvis/`, ladda ner, Drive-delning, `forget`, publicering |
+| 3 Fråga | `ask` | Skicka/svara/vidarebefordra mejl (Gmail och Outlook), event med inbjudna, ändra/ta bort event, radera, Bash/PowerShell, Windows-MCP Click/Type/Shortcut, flytta/döpa om utanför `~/Jarvis/`, ladda ner, Drive-delning, `forget`, publicering |
 | Neka | `deny` | Hemlighetssökvägar, betalningar/köp, stänga av Defender/brandvägg, registerskrivning, skapa konton, läsa/skriva minnesfiler med andra verktyg än `jarvis-memory` |
 
 **Regler:**
@@ -128,7 +129,8 @@ Ersätter basens binära `JARVIS_ALLOW_WRITES` med nivåer. Reglerna ligger i `p
 - Verktyg:
   - `recall(query: string, limit?: number)` → träffar med fil, rad och utdrag. Nivå 1.
   - `remember(text: string, topic: string)` → lägger till rad i `fakta/<topic>.md`. Nivå 2.
-  - `forget(match: string)` → visar träffar och tar bort efter bekräftelse. Nivå 3.
+  - `forget(match: string)` → tar bort matchande rader (vakten frågar först). Nivå 3.
+  - `log_day(summary: string)` → lägger sammanfattningen i dagens `logg/ÅÅÅÅ-MM-DD.md`. Nivå 2. Personan instrueras att anropa den när samtalet avslutas.
 - Hemlighetsfilter före varje skrivning: avvisar text som matchar lösenords-/nyckel-/kortnummermönster (t.ex. `sk-…`, `ghp_…`, `AKIA…`, 13–19 siffror som klarar Luhn, "password: …").
 - Allt lokalt, ingen synkning.
 
@@ -138,12 +140,12 @@ Ersätter basens binära `JARVIS_ALLOW_WRITES` med nivåer. Reglerna ligger i `p
 
 | Kommando | Implementation | Nivå |
 |---|---|---|
-| "Ladda ner …" | Playwright-MCP hittar filen; sparas i `~/Jarvis/Nedladdningar/<typ>/`. Bekräftelsen anger filnamn, källa och storlek. | 3 |
+| "Ladda ner …" | Playwright-MCP hittar länken; `jarvis-media.download_file(url)` hämtar den till `~/Jarvis/Nedladdningar/<typ>/` (vägrar privata/lokala adresser). Bryggan gör en HEAD-förfrågan så att bekräftelsen kan ange filnamn, källa och storlek. | 3 |
 | Körbar fil (.exe, .msi, .bat, .cmd, .ps1, .scr, zip som innehåller sådana) | Läggs i `Nedladdningar/Program/`, skannas med `Start-MpScan -ScanType CustomScan`, **körs aldrig automatiskt** | 3 |
-| "Gör shorts av …" | `jarvis-media.make_shorts(input, count=3, min_s=15, max_s=60)`: transkribera via taltjänsten → Claude väljer segment → ffmpeg klipper, beskär 9:16, bränner in undertexter → `~/Jarvis/Video/Shorts/<datum>_<namn>/short-NN.mp4` + `.srt`. Originalet rörs inte. | 2 |
-| "Hämta …" | Gmail/Drive-kopplingar, filverktyg, webben. Bilagor sparas i `~/Jarvis/Mejlbilagor/ÅÅÅÅ-MM/`. | 1 (läsa) / 2 (spara) |
+| "Gör shorts av …" | Två steg: `jarvis-media.transcribe_video(path)` (nivå 1) ger utskrift med tidsstämplar via taltjänsten → Claude väljer 15–60 s långa klipp → `jarvis-media.make_shorts(path, clips=[{start, end, title}], name)` (nivå 2): ffmpeg klipper, beskär 9:16 (1080×1920), bränner in undertexter → `~/Jarvis/Video/Shorts/<datum>_<namn>/short-NN.mp4` + `.srt`. Originalet rörs inte. | 1 / 2 |
+| "Hämta …" | Gmail/Drive-kopplingar, filverktyg, webben. Filer som ett verktyg lagt i temp/arbetsytan (t.ex. bilagor) flyttas på plats med `jarvis-media.store_file(source, kind, description)` – bilagor till `~/Jarvis/Mejlbilagor/ÅÅÅÅ-MM/`. | 1 (läsa) / 2 (spara) |
 | "Öppna/starta …" | Windows-MCP `App` | 2 |
-| "Sortera … (mapp utanför Jarvis)" | `jarvis-media.plan_sort(path)` visar plan → `apply_sort(plan_id)` | plan 1 / utför 3 |
+| "Sortera … (mapp utanför Jarvis)" | `jarvis-media.plan_sort(path)` föreslår flyttar till typmappar (`Dokument`, `Bilder`, `Video`, `Ljud`, `Program`) **inne i samma mapp**, utan att döpa om – sparas som plan i `~/.jarvis/plans/` → `apply_sort(plan_id)` utför; filer som ändrats sedan planen hoppas över | plan 1 / utför 3 |
 | "Ladda upp …" | Delprojekt B | 3 |
 
 `yt-dlp` installeras valfritt och används endast för Antons egna videor eller material med fri licens.
@@ -176,7 +178,9 @@ Ersätter basens binära `JARVIS_ALLOW_WRITES` med nivåer. Reglerna ligger i `p
 
 ```
 JARVIS_ACCOUNT_CONNECTORS=1
+JARVIS_BLOCK_CONNECTORS=Lena,Supabase,VistaPrint,Gamma,Canva,vidIQ,ElevenLabs
 JARVIS_MCP_SERVERS=windows-mcp,playwright,jarvis-memory,jarvis-media
+JARVIS_DISABLE=browser
 JARVIS_STT=local
 JARVIS_STT_URL=http://127.0.0.1:8790
 ```
@@ -186,15 +190,14 @@ JARVIS_STT_URL=http://127.0.0.1:8790
 ```
 VITE_TTS_ENGINE=kokoro
 VITE_KOKORO_VOICE=bm_george
-VITE_PICOVOICE_ACCESS_KEY=...   # Antons egen nyckel, committas aldrig
 ```
 
-MCP-servrarna `windows-mcp`, `playwright`, `jarvis-memory`, `jarvis-media` läggs till i `~/.claude.json`. Nycklar committas aldrig.
+MCP-servrarna `windows-mcp`, `playwright`, `jarvis-memory`, `jarvis-media` läggs till i `~/.claude.json`. Nycklar committas aldrig. `JARVIS_BLOCK_CONNECTORS` (ny) håller claude.ai-kopplingar som inte behövs i v1 helt utanför sessionen via SDK:ns `disallowedTools` (`mcp__claude_ai_<namn>`), så att deras verktyg varken kostar tokens eller kan anropas. Kvar i v1: Gmail, Google Calendar, Google Drive, Microsoft 365 och Shopify (så att Jarvis kan bygga en Shopify-butik när Anton ber om det; alla ändringar i Shopify ligger på nivå 3). `JARVIS_DISABLE=browser` stänger av forkens styrning av Antons egen Chrome – Playwright används i stället. Forkens binära `JARVIS_ALLOW_WRITES` ersätts av vakten: verktygen exponeras och varje anrop avgörs av nivåerna.
 
 ## 5. Dataflöde – en replik
 
-1. Porcupine hör "Jarvis" → HUD går från `dormant` till `listening` (eller mellanslag hålls nere).
-2. VAD avgör när repliken är slut → ljudet skickas till bryggans `/stt` → taltjänsten → `{text, language}`.
+1. VAD fångar en replik → bryggans `/stt` → taltjänsten → `{text, language}`. I `dormant` väcker "Jarvis" i texten HUD:n (eller mellanslag hålls nere).
+2. I `listening` blir nästa avslutade replik en fråga.
 3. Bryggan skickar texten till Agent SDK-sessionen (samma session behålls mellan repliker).
 4. Claude planerar och anropar verktyg; varje anrop passerar `enforcePolicy` (nivåbeslut, eventuell bekräftelse, logg).
 5. Svarstext strömmas till HUD:n → Kokoro läser upp mening för mening; paneler visar resultat.
@@ -247,7 +250,6 @@ Innan något körs på `antons`: läs igenom `bridge/`, `scripts/`, `package.jso
 |---|---|
 | Claude Code installerat och inloggat med abonnemanget | Hjärnan |
 | Node.js 20+, `uv` (Python), ffmpeg | Körmiljö |
-| Gratis Picovoice-konto + AccessKey | Väckningsordet offline |
 | Headset eller mikrofon | Röst in |
 | Chrome eller Edge | HUD |
 | (Valfritt) återansluta RUBE på claude.ai | Fler appar senare |
@@ -257,7 +259,8 @@ Innan något körs på `antons`: läs igenom `bridge/`, `scripts/`, `package.jso
 | Risk | Hantering |
 |---|---|
 | Laddar Agent SDK claude.ai-kopplingarna (Gmail/Calendar/Drive) på Windows? Dokumentationen säger att de laddas när abonnemanget är aktiv inloggning. | Första steget i planen: kort spike som listar verktygen i en SDK-session med `JARVIS_ACCOUNT_CONNECTORS=1`. |
+| Tar `disallowedTools` med ett servernamn (`mcp__claude_ai_Lena`) bort hela kopplingen ur sessionen, och vilka exakta servernamn får kopplingarna? | Samma spike som ovan listar namnen och verifierar spärren; vakten frågar ändå för okända verktyg. |
 | Basen är främst testad på macOS; Windows nämns delvis. | Spike: `npm start` på Windows, åtgärda sökvägar och skript. |
 | Abonnemangets gränser kan nås vid tung användning. | Visa tydligt i HUD; byte till API-nyckel är en konfigurationsändring. |
-| Picovoice-villkor (gratisnivå för personligt bruk). | Reserv: openWakeWord-WASM bakom samma gränssnitt. |
+| Väckningsord via utskrift kostar CPU (varje replik transkriberas). | VAD skickar bara segment med tal; modellstorlek justerbar (`base`). |
 | Uppströms ändringar i adewaskar/jarvis. | Håll våra ändringar i egna filer där det går; synka uppströms manuellt vid behov. |
