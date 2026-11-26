@@ -64,6 +64,8 @@ Varje område nedan får egen spec → plan → bygge (samma process som v1) nä
 | Publicerare | 1 | Lägger ut enligt schema och tak | YouTube Data API, TikTok Content Posting API (se nedan) |
 | Analytiker | 1 | Följer upp efter 24 h och 72 h, säger vad som funkar, matar trendspanaren och VD:n | vidIQ-analys |
 
+**Agentvägg i HUD:en (Antons önskemål, som i TikTok-videon):** alla agenter syns på skärmen samtidigt medan de jobbar. Varje agent har ett holografiskt kort med namn, roll, status (ledig, jobbar, väntar på granskning, klar), nuvarande uppdrag, senaste verktyg den använde och en förloppsindikator. VD:n står i mitten med linjer till de agenter han har gett uppdrag, så att man ser hur arbetet flyttas mellan dem. Nya agenter som "anställs" tonar in som nya kort. Tekniskt: bryggan skickar Agent SDK:s subagenthändelser (start, verktygsanrop, klart, fel, kopplade via `parent_tool_use_id`) över WebSocketen som `{type:'agent', id, role, status, task, tool, progress}`. HUD:en ritar korten med Three.js, i samma stil som reaktorn. "Jarvis, visa teamet" växlar till helskärm.
+
 **Rekrytering:** VD:n startar fler instanser av en roll när kön växer (t.ex. två producenter). Tak: max antal samtidiga agenter och max kostnad per dag (krediter: vidIQ, ElevenLabs, Claude-gränser) i `autonomy.json`.
 
 **Stående fullmakt (`autonomy.json`, du godkänner filen en gång):**
